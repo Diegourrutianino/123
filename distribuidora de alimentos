@@ -1,0 +1,307 @@
+TRANSACCION COMPRA
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.util.Scanner;
+
+public class Compras {
+    private int idProducto;
+    private int cantidad;
+    private double precioUnitario;
+
+   
+
+    public int getIdProducto() {
+        return idProducto;
+    }
+
+    public void setIdProducto(int idProducto) {
+        this.idProducto = idProducto;
+    }
+
+    public int getCantidad() {
+        return cantidad;
+    }
+
+    public void setCantidad(int cantidad) {
+        this.cantidad = cantidad;
+    }
+
+    public double getPrecioUnitario() {
+        return precioUnitario;
+    }
+
+    public void setPrecioUnitario(double precioUnitario) {
+        this.precioUnitario = precioUnitario;
+    }
+
+    public void registrarCompra() {
+        try (Connection connection = Conexion.obtenerConexion()) {
+            Scanner scanner = new Scanner(System.in);
+
+            System.out.println("Ingrese el ID del producto:");
+            setIdProducto(scanner.nextInt());
+
+            System.out.println("Ingrese la cantidad de productos:");
+            setCantidad(scanner.nextInt());
+
+            System.out.println("Ingrese el precio unitario:");
+            setPrecioUnitario(scanner.nextDouble());
+
+            String sql = "INSERT INTO Compras (idProducto, cantidad, precioUnitario) VALUES (?, ?, ?)";
+
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setInt(1, getIdProducto());
+                statement.setInt(2, getCantidad());
+                statement.setDouble(3, getPrecioUnitario());
+
+                int filasAfectadas = statement.executeUpdate();
+                if (filasAfectadas > 0) {
+                    System.out.println("Compra registrada en la base de datos.");
+                } else {
+                    System.out.println("Error al registrar la compra.");
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void main(String[] args) {
+        Compras compra = new Compras();
+        compra.registrarCompra();
+    }
+}
+
+
+
+TRANSACCION VENTA
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+
+public class Ventas {
+    private int idProducto;
+    private int cantidad;
+    private double precioUnitario;
+
+
+    public Ventas(int idProducto, int cantidad, double precioUnitario) {
+        this.idProducto = idProducto;
+        this.cantidad = cantidad;
+        this.precioUnitario = precioUnitario;
+    }
+
+
+    public int getIdProducto() {
+        return idProducto;
+    }
+
+    public void setIdProducto(int idProducto) {
+        this.idProducto = idProducto;
+    }
+
+    public int getCantidad() {
+        return cantidad;
+    }
+
+    public void setCantidad(int cantidad) {
+        this.cantidad = cantidad;
+    }
+
+    public double getPrecioUnitario() {
+        return precioUnitario;
+    }
+
+    public void setPrecioUnitario(double precioUnitario) {
+        this.precioUnitario = precioUnitario;
+    }
+
+    // Método para registrar una venta en la base de datos
+    public void registrarVenta() {
+        try (Connection connection = Conexion.obtenerConexion()) {
+            String sql = "INSERT INTO Ventas (idProducto, cantidad, precioUnitario) VALUES (?, ?, ?)";
+
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setInt(1, getIdProducto());
+                statement.setInt(2, getCantidad());
+                statement.setDouble(3, getPrecioUnitario());
+
+                int filasAfectadas = statement.executeUpdate();
+                if (filasAfectadas > 0) {
+                    System.out.println("Venta registrada en la base de datos.");
+                } else {
+                    System.out.println("Error al registrar la venta.");
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}
+MENSAJERIA CONSUMIDOR
+package Mensajeria;
+
+import org.apache.activemq.ActiveMQConnectionFactory;
+
+import javax.jms.*;
+
+public class Consumidor {
+    private static final String BROKER_URL = "tcp://localhost:61616"; 
+    private static final String QUEUE_NAME = "TransaccionesQueue"; 
+
+    public static void main(String[] args) {
+        try {
+            
+            ConnectionFactory connectionFactory = new ActiveMQConnectionFactory(BROKER_URL);
+            Connection connection = connectionFactory.createConnection();
+            connection.start();
+
+            
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            Destination destination = session.createQueue(QUEUE_NAME);
+
+            
+            MessageConsumer consumer = session.createConsumer(destination);
+
+            
+            consumer.setMessageListener(new MessageListener() {
+                @Override
+                public void onMessage(Message message) {
+                    if (message instanceof MapMessage) {
+                        try {
+							procesarTransaccion((MapMessage) message);
+						} catch (JMSException e) {
+							
+							e.printStackTrace();
+						}
+                    }
+                }
+            });
+
+           
+            System.out.println("Esperando mensajes...");
+            Thread.sleep(30000); 
+ 
+            connection.close();
+        } catch (JMSException | InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void procesarTransaccion(MapMessage message) throws JMSException {
+ 
+        String tipo = message.getString("Tipo");
+        String producto = message.getString("Producto");
+        int cantidad = message.getInt("Cantidad");
+        double precio = message.getDouble("Precio");
+
+       
+        System.out.println("Transacción procesada: " + tipo + " - " + producto + " - Cantidad: " + cantidad + " - Precio: " + precio);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+MENSAJERIA PRODUCTO
+package Mensajeria;
+
+import org.apache.activemq.ActiveMQConnectionFactory;
+
+import javax.jms.*;
+
+public class Productor {
+    private static final String BROKER_URL = "tcp://localhost:61616"; 
+    private static final String QUEUE_NAME = "TransaccionesQueue"; 
+
+    public static void main(String[] args) {
+        try {
+            // Configuración de la conexión al servidor ActiveMQ
+            ConnectionFactory connectionFactory = new ActiveMQConnectionFactory(BROKER_URL);
+            Connection connection = connectionFactory.createConnection();
+            connection.start();
+
+            // Creación de la sesión y la cola
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            Destination destination = session.createQueue(QUEUE_NAME);
+
+            // Creación del productor
+            MessageProducer producer = session.createProducer(destination);
+
+            
+            enviarTransaccion(session, producer, "Compra", "Producto A", 10, 15.99);
+            enviarTransaccion(session, producer, "Venta", "Producto B", 5, 25.99);
+connection.close();
+        } catch (JMSException e) {
+            e.printStackTrace();
+        }
+    }
+ private static void enviarTransaccion(Session session, MessageProducer producer, String tipo, String producto, int cantidad, double precio) throws JMSException {
+        // Creación del mensaje y data
+        MapMessage message = session.createMapMessage();
+        message.setString("Tipo", tipo);
+        message.setString("Producto", producto);
+        message.setInt("Cantidad", cantidad);
+        message.setDouble("Precio", precio);
+
+        // Envío del mensaje con data
+        producer.send(message);
+        System.out.println("Mensaje enviado: " + tipo + " - " + producto);
+    }
+}
+CACHE BRENCH
+package Cache;
+import redis.clients.jedis.Jedis;
+public class CacheBranch {
+    private Jedis jedis;
+ public CacheBranch() {
+        this.jedis = new Jedis("localhost"); // Configura la conexión a la instancia de Redis
+    }
+ public void addToCache(int branchId, String branchInfo) {
+        jedis.set("Branch:" + branchId, branchInfo);
+    }
+ public String getFromCache(int branchId) {
+        return jedis.get("Branch:" + branchId);
+    }
+}
+
+
+ 
+
+
+
+
+
+
+CACHE PRODUCTO
+package Cache;
+import redis.clients.jedis.Jedis;
+public class CacheProduct {
+    private Jedis jedis;
+public CacheProduct() {
+        this.jedis = new Jedis("localhost"); // Configura la conexión a la instancia de Redis
+    }
+ public void addToCache(int productId, String productInfo) {
+        jedis.set("Product:" + productId, productInfo);
+    }
+public String getFromCache(int productId) {
+        return jedis.get("Product:" + productId);
+    }
+}
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}
